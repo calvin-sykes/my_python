@@ -154,11 +154,13 @@ class Ion:
         self.element = elem
         self.atomic_number = element_to_atomic_num(elem)
         self.charge = rn_to_num(ion_stage, sub_one=True)
+        self.available_fields = set()
 
         try:
             data = IonDataProvider.get_data(name)
             for field in data:
                 setattr(self, field, data[field])
+                self.available_fields.add(field)
         except KeyError as e:
             raise ValueError(f"Ion {name} is unrecognised") from e
 

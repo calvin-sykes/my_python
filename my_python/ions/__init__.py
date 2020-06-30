@@ -1,3 +1,3 @@
-from .ion import *
+from .ion import Ion, IonDataProvider as _idp
 
-IonDataProvider.load_data()
+_idp.load_data()

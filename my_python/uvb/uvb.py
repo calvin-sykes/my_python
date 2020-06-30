@@ -1,7 +1,6 @@
 import numpy as np
 import unyt as u
 
-from scipy.integrate import romberg as quad
 from scipy.interpolate import interp1d
 
 from my_python.ions import Ion
@@ -52,18 +51,18 @@ def list_available_spectra():
     return list(_filenames.keys())
 
 class UVB:
-    def __init__(self, spectrum, redshift):
+    def __init__(self, spectrum_id, redshift):
         self.z = redshift
-        self.spectrum_name = spectrum
+        self.name = spectrum_id
         
         self._nu = None
         self._Jnu = None
 
     def _load(self, z):
         try:
-            filename = _filenames[self.spectrum_name]
+            filename = _filenames[self.name]
         except KeyError:
-            raise ValueError(f"Unknown spectrum {self.spectrum_name}")
+            raise ValueError(f"Unknown spectrum {self.name}")
 
         nu, Jnu = _load_cuba(filename, z)
         self._nu = nu
@@ -97,17 +96,29 @@ class UVB:
 
         return self._Jnu_interp(nu) * _Jnu_unit
 
-    def HI_photoionisation_rate(self, nu_th=None, nsteps=100000):
-        """Return the photoionisation rate for HI."""
+    def photoionisation_rate(self, ion='H I', nu_th=None, nsteps=100000):
+        """
+        Return the photoionisation rate for a given ion species.
+        
+        Parameters:
+        ion, str: The ion to calculate the ionisation rate for (default: HI)
+        nu_th, float or `unyt.Quantity`: The frequency lower bound (default: threshold frequency for chosen ion)
+        nsteps, int: Number of frequency intervals to use to integrate the UVB over (default: 100000)
+        """
 
-        hydrogen = Ion('H I')
+        ion_obj = Ion(ion)
+
+        if 'phion_xsec_params' not in ion_obj.available_fields:
+            raise ValueError(f"Cannot calculate ionisation rate for ion {ion}")
 
         if nu_th is None:
-             nu_th = hydrogen.ionisation_potential.to('Hz', equivalence='spectral')
+             nu_th = ion_obj.ionisation_potential
+        nu_th = nu_th.to_equivalent('Hz', 'spectral')
 
         nu_values = np.geomspace(nu_th, self.tab_nu.max(), nsteps)
         Jnu_values = self.spectrum(nu_values)
-        xsec_values = hydrogen.photoionisation_cross_section(nu_values)
+
+        xsec_values = ion_obj.photoionisation_cross_section(nu_values)
 
         gamma_integrand = Jnu_values * xsec_values / (u.h * nu_values)
         return (4 * np.pi * u.sr * np.trapz(gamma_integrand, nu_values)).in_units(u.s**-1)

@@ -178,7 +178,7 @@ class Ion:
             nu = nu * u.Hz
         
         Et, Emx, E0, s0, ya, P, yw, y0, y1 = self.phion_xsec_params
-        xsec = np.zeros_like(nu.ndview)
+        xsec = np.zeros(nu.shape)
         energy = nu.to('eV', equivalence='spectral').value
 
         x = (energy / E0) - y0

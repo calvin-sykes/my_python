@@ -29,4 +29,5 @@ gamma_15 = mh15.photoionisation_rate()
 print(gamma_01, gamma_12, gamma_15)
 print(gamma_12 / gamma_01)
 
-print(hm01.photoionisation_rate('H II'))
+print(hm01.photon_flux())
+print(hm01.photon_weighted_cross_section())

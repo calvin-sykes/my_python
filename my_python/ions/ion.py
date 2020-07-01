@@ -141,6 +141,31 @@ class PhionProvider(IonDataProvider, name='phion'):
             data_dict[ion_id] = data_arr[i, 2:]
         return {'phion_xsec_params': data_dict}
 
+class RadiativeRecombProvider(IonDataProvider, name='radi_recomb'):
+    @classmethod
+    def __call__(cls):
+        """
+        Load data for radiative recombination coefficients.
+        From http://amdpp.phys.strath.ac.uk/tamoc/DATA/RR/
+        """
+        data_dict = {}
+        with open(os.path.join(os.path.dirname(__file__), 'recomb_radi.dat'), 'r') as datafile:
+            for line in datafile.readlines():
+                if line.startswith('#'):
+                    continue # skip comment lines
+                lsplit = line.split()
+                if lsplit[2] != '1':
+                    continue # skip M > 1 (these are metastable states above the ground state)
+                elem = atomic_num_to_element(int(lsplit[0]))
+                ion_stage = num_to_rn(int(lsplit[0]) - int(lsplit[1]))
+                ion_id = f"{elem} {ion_stage}"
+                coeffs = np.array(lsplit[4:], dtype=np.float)
+                coeffs.resize(6)
+                data_dict[ion_id] = (0, coeffs)
+        # manually add missing data
+        data_dict["Si I"] = (1, np.array([5.90E-13,0.601]))
+        return {'r_recomb_params': data_dict}
+
 class Ion:
     def __init__(self, name):
         try:
@@ -183,7 +208,7 @@ class Ion:
             raise NotImplementedError(f"Photoionisation cross-section not defined for ion {ion}") from e
 
         xsec = np.zeros(nu.shape)
-        energy = nu.to('eV', equivalence='spectral').value
+        energy = nu.to_equivalent('eV', 'spectral').value
 
         x = (energy / E0) - y0
         y = (x**2 + y1**2)**0.5
@@ -193,3 +218,36 @@ class Ion:
         xsec[w] = 1.0e-18 * s0 * Fy[w]
 
         return xsec * u.cm**2
+
+    def recombination_rate(self, temp):
+        """
+        Calculate the total recombination rate, including radiative, dielectronic and
+        charge transfer (TODO) terms where appropriate.
+
+        Parameters:
+        temp, ndarray or `Unyt.UnitArray`: The temperatures to evaluate the
+        recombination rates at. If an ndarray, units are assumed to be K.
+        """
+        temp = np.atleast_1d(temp)
+        if type(temp) is np.ndarray:
+            temp = temp * u.K
+        temp = temp.to_equivalent(u.K, 'thermal').value
+
+        if 'r_recomb_params' in self.available_fields:
+            form = self.r_recomb_params[0]
+
+            if form == 0: # Badnell fit
+                A, b0, T0, T1, c, T2 = self.r_recomb_params[1]
+
+                b = b0 + c * np.exp(-T2 / temp)
+                term_0 = (1 + (temp / T0)**0.5)**(1 - b)
+                term_1 = (1 + (temp / T1)**0.5)**(1 + b)
+                rate_r = A * ((temp / T0)**0.5 * term_0 * term_1)**-1
+            elif form == 1: # Simple power law
+                A, beta = self.r_recomb_params[1]
+
+                rate_r = A * (temp / 1.0e4)**-beta
+        else:
+            rate_r = np.zeros(temp.shape)
+        
+        return rate_r * u.cm**3 * u.s**-1

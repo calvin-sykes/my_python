@@ -79,12 +79,8 @@ def num_to_rn(num, add_one=False):
         num -= highval
     return rn
 
-from collections import defaultdict as _defaultdict
-def _makehash():
-    return _defaultdict(_makehash)
-
 class IonDataProvider(RegisteredFunctor):
-    _data = _makehash()
+    _data = dict()
 
     @classmethod
     def load_data(cls):
@@ -92,6 +88,8 @@ class IonDataProvider(RegisteredFunctor):
             provider_data = cls.registry[provider]()
             for field in provider_data:
                 for species in provider_data[field]:
+                    if species not in cls._data:
+                        cls._data[species] = dict()
                     cls._data[species][field] = provider_data[field][species]
 
     @classmethod
@@ -154,8 +152,10 @@ class Ion:
         self.element = elem
         self.atomic_number = element_to_atomic_num(elem)
         self.charge = rn_to_num(ion_stage, sub_one=True)
-        self.available_fields = set()
+        if self.charge > self.atomic_number:
+            raise ValueError(f"Cannot have ion {name} with charge {self.charge} greater than atomic number {self.atomic_number}")
 
+        self.available_fields = set()
         try:
             data = IonDataProvider.get_data(name)
             for field in data:
@@ -177,7 +177,11 @@ class Ion:
         if type(nu) is np.ndarray:
             nu = nu * u.Hz
         
-        Et, Emx, E0, s0, ya, P, yw, y0, y1 = self.phion_xsec_params
+        try:
+            Et, Emx, E0, s0, ya, P, yw, y0, y1 = self.phion_xsec_params
+        except AttributeError as e:
+            raise NotImplementedError(f"Photoionisation cross-section not defined for ion {ion}") from e
+
         xsec = np.zeros(nu.shape)
         energy = nu.to('eV', equivalence='spectral').value
 

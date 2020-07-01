@@ -54,10 +54,27 @@ def list_available_spectra():
     return list(_filenames.keys())
 
 class UVB:
-    def __init__(self, spectrum_id, redshift):
+    def __init__(self, spectrum_id, redshift, scale=1.0, alpha=0.0):
+        """
+        Construct an object representing a UVB spectrum.
+        Parameters:
+        spectrum_id, str: The identifier for the desired spectrum, which must be
+        one of the values returned by `list_available_spectra`
+        z, float: The redshift at which to interpolate the spectrum
+        scale, float or str: The multiplicative scale factor to apply to the spectrum
+        (default: 1.0). If 'gamma' and `alpha` is not 0, scale the UVB after the slope
+        parameter has been applied such that the photoionisation rate is equal to that
+        of the original spectrum.
+        alpha, float: The slope parameter alpha_UV, defined as in Crighton+ 2015 (default: 0.0)
+        """
         self.z = redshift
         self.name = spectrum_id
-        
+        self.scale = scale
+        self.alpha = alpha
+
+        if type(scale) is str and scale != 'gamma':
+            raise ValueError(f"Invalid value {scale} provided for scale (must be `gamma`)")
+
         self._nu = None
         self._Jnu = None
 
@@ -71,7 +88,29 @@ class UVB:
         self._nu = nu
         self._Jnu = Jnu
 
-        self._Jnu_interp = interp1d(self._nu, self._Jnu)
+        if self.alpha != 0.0:
+            e0, e1 = np.array([1, 10]) * u.Ryd
+            earr = nu.to_equivalent('Ryd', 'spectral')
+            rge0 = (earr > e0) & (earr <= e1)
+            rge1 = earr > e1
+            idx1 = np.searchsorted(earr, e1)
+            
+            self._Jnu[rge0] *= (earr[rge0] / e0)**self.alpha
+            self._Jnu[rge1] *= (e1 / e0)**self.alpha
+            
+        if self.scale == 'gamma':
+            # Calculate the photoionisation rate for the alpha=0 spectrum, and
+            # rescale this spectrum such that the rate is unchanged
+            gamma_fid = UVB(self.name, self.z).photoionisation_rate()
+
+            # must set this to recalc photoionisation rate, but it will be
+            # overwritten after scale has been calculated
+            self._Jnu_interp = interp1d(self._nu, self._Jnu) 
+            gamma_new = self.photoionisation_rate()
+            self.scale = gamma_fid / gamma_new
+
+        self._Jnu *= self.scale
+        self._Jnu_interp = interp1d(self._nu, self._Jnu) 
 
     @property
     def tab_nu(self):

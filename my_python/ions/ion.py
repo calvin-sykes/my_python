@@ -159,12 +159,41 @@ class RadiativeRecombProvider(IonDataProvider, name='radi_recomb'):
                 elem = atomic_num_to_element(int(lsplit[0]))
                 ion_stage = num_to_rn(int(lsplit[0]) - int(lsplit[1]))
                 ion_id = f"{elem} {ion_stage}"
+                
                 coeffs = np.array(lsplit[4:], dtype=np.float)
                 coeffs.resize(6)
                 data_dict[ion_id] = (0, coeffs)
         # manually add missing data
         data_dict["Si I"] = (1, np.array([5.90E-13,0.601]))
         return {'r_recomb_params': data_dict}
+
+class DielectronicRecombProvider(IonDataProvider, name='diel_recomb'):
+    @classmethod
+    def __call__(cls):
+        """
+        Load data for dielectronic recombination coefficients.
+        From http://amdpp.phys.strath.ac.uk/tamoc/DATA/DR/
+        """
+        data_dict = {}
+        with open(os.path.join(os.path.dirname(__file__), 'recomb_diel_ci.dat'), 'r') as c_file, \
+             open(os.path.join(os.path.dirname(__file__), 'recomb_diel_Ei.dat'), 'r') as e_file:
+            for c_line, e_line in zip(c_file.readlines(), e_file.readlines()):
+                if c_line.startswith('#'):
+                    continue # skip comment lines
+                c_split = c_line.split()
+                e_split = e_line.split()
+                if c_split[2] != '1':
+                    continue # skip M > 1 (these are metastable states above the ground state)
+                elem = atomic_num_to_element(int(c_split[0]))
+                ion_stage = num_to_rn(int(c_split[0]) - int(c_split[1]))
+                ion_id = f"{elem} {ion_stage}"
+
+                n_coeffs = len(c_split[4:])
+                coeffs = np.zeros((n_coeffs, 2))
+                coeffs[:,0] = np.array(c_split[4:], dtype=np.float)
+                coeffs[:,1] = np.array(e_split[4:], dtype=np.float)
+                data_dict[ion_id] = coeffs
+        return {'d_recomb_params': data_dict}
 
 class Ion:
     def __init__(self, name):
@@ -249,5 +278,12 @@ class Ion:
                 rate_r = A * (temp / 1.0e4)**-beta
         else:
             rate_r = np.zeros(temp.shape)
+
+        if 'd_recomb_params' in self.available_fields:
+            c_i, E_i = self.d_recomb_params
+            
+            rate_d = np.sum(c_i * np.exp(-E_i / temp))
+        else:
+            rate_d = np.zeros(temp.shape)
         
-        return rate_r * u.cm**3 * u.s**-1
+        return (rate_r + rate_d) * u.cm**3 * u.s**-1

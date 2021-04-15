@@ -213,7 +213,7 @@ class UVB:
 
         nu_values = np.geomspace(nu_th, self.tab_nu.max(), nsteps) * u.Hz # geomspace trashes units :/
         Jnu_values = self.spectrum(nu_values)
-        xsec_values = ion.photoionisation_cross_section(nu_values)
+        xsec_values = ion_obj.photoionisation_cross_section(nu_values)
 
         H_integrand = Jnu_values * xsec_values * (nu_values - nu_th) / nu_values
         return (4 * np.pi * u.sr * np.trapz(H_integrand, nu_values)).in_units(u.eV * u.s**-1)

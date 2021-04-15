@@ -105,13 +105,13 @@ def require_attrs(required_attrs):
     if isinstance(required_attrs, str):
         required_attrs = [required_attrs]
 
-    def decorator_reqattrs(func):
-        def _checkattr(attr):
-            if '|' in attr: # alternation
-                return any(hasattr(self, a) for a in attr.split('|'))
-            else:
-                return hasattr(self, attr)
+    def _checkattr(obj, attr):
+        if '|' in attr: # alternation
+            return any(hasattr(obj, a) for a in attr.split('|'))
+        else:
+            return hasattr(obj, attr)
 
+    def decorator_reqattrs(func):
         @ftl.wraps(func)
         def _wrapper(self, *args, **kwargs):
             if all(_checkattr(self, attr) for attr in required_attrs):
